@@ -1,0 +1,13 @@
+[package]
+name = "proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.9.0"
+prost-derive = "0.9.0"
+tonic = "0.6.2"
+async-trait = "0.1.52"
+
+[build-dependencies]
+tonic-build = "0.6.2"

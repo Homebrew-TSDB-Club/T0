@@ -1,0 +1,14 @@
+syntax = "proto3";
+package query;
+
+message PromQLQuery {
+  string query = 1;
+}
+
+message PromQLResponse {
+  bytes arrows = 1;
+}
+
+service Query {
+  rpc PromQL(PromQLQuery) returns (PromQLResponse);
+}

@@ -1,0 +1,19 @@
+[package]
+name = "query"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+storage = { path = "../storage" }
+proto = { path = "../../proto" }
+futures = "0.3.21"
+async-trait = "0.1.52"
+ql = { path = "../core/ql" }
+arrow2 = { version = "0.9.1", features = ["io_ipc"] }
+tracing = "0.1.31"
+context = { path = "../context" }
+snafu = "0.7.0"
+common = { path = "../core/common" }
+
+[dev-dependencies]
+futures-lite = "1.12.0"

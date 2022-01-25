@@ -1,0 +1,10 @@
+syntax = "proto3";
+package prometheus;
+
+import "remote.proto";
+
+message WriteResponse {}
+
+service Remote {
+  rpc Write(prometheus.WriteRequest) returns (WriteResponse);
+}

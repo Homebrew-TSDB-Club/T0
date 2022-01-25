@@ -1,0 +1,30 @@
+[package]
+name = "prometheus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proto = { path = "../../proto" }
+tonic = "0.6.2"
+tokio = { version = "1.17.0", features = ["rt-multi-thread"] }
+clap = { version = "3.1.0", features = ["derive", "env"] }
+fastrand = "1.7.0"
+http = "0.2.6"
+hyper = { version = "0.14.17", features = ["full"]}
+snappy = "0.4.0"
+
+[[bin]]
+name = "remote-write"
+path = "src/remote_write.rs"
+
+[[bin]]
+name = "benchmark"
+path = "src/benchmark.rs"
+
+[[bin]]
+name = "promql"
+path = "src/promql_scan.rs"
+
+[[bin]]
+name = "vm-insert-benchmark"
+path = "src/vm_insert.rs"

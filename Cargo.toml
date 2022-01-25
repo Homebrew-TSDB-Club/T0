@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "src/core/runtime",
+    "src/core/common",
+    "src/core/ql",
+    "src/core/server",
+    "src/storage",
+    "tests/prometheus",
+    "proto",
+    "cmd",
+    "src/query",
+    "src/context"
+]
+
+default-members = ["cmd"]
+
+[profile.release]
+codegen-units = 1
+debug = true
+lto = "thin"
+
+[profile.bench]
+inherits = "release"
