@@ -219,14 +219,8 @@ pub struct StorageServer {
     inner: Arc<Storage>,
 }
 
-#[async_trait]
-impl Remote for StorageServer {
-    async fn write(
-        &self,
-        request: GrpcRequest<PromWriteRequest>,
-    ) -> Result<GrpcResponse<WriteResponse>, Status> {
-        let request = request.into_inner();
-        debug!("request start");
+impl StorageServer {
+    pub async fn grpc_write(&self, request: PromWriteRequest) {
         for timeseries in request.timeseries {
             let mut name = None;
             let mut labels = Vec::with_capacity(timeseries.labels.len() - 1);
@@ -266,6 +260,17 @@ impl Remote for StorageServer {
                 error!("timeseries write error: {:?}", error);
             }
         }
+    }
+}
+
+#[async_trait]
+impl Remote for StorageServer {
+    async fn write(
+        &self,
+        request: GrpcRequest<PromWriteRequest>,
+    ) -> Result<GrpcResponse<WriteResponse>, Status> {
+        debug!("request start");
+        self.grpc_write(request.into_inner()).await;
         Ok(GrpcResponse::new(WriteResponse {}))
     }
 }

@@ -1,11 +1,10 @@
 use clap::Parser;
-use proto::prometheus::remote_client::RemoteClient;
 use proto::prometheus::{Label, Sample, TimeSeries, WriteRequest};
 use std::iter::repeat_with;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tonic::transport::Endpoint;
-use tonic::Request;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -17,16 +16,16 @@ struct Args {
     #[clap(short, long)]
     addr: String,
     // Client thread num.
-    #[clap(short, long, default_value_t = 32)]
+    #[clap(short, long)]
     threads: usize,
     // each client request round.
-    #[clap(short, long, default_value_t = 8)]
+    #[clap(short, long)]
     round: usize,
     // each client request round.
-    #[clap(short, long, default_value_t = 128)]
+    #[clap(short, long)]
     batch: usize,
     // each client request round.
-    #[clap(short, long, default_value_t = 128)]
+    #[clap(short, long)]
     channels: usize,
 }
 
@@ -44,25 +43,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime.block_on(async move {
         let mut joins = Vec::new();
         for _ in 0..args.channels {
-            let channel = Endpoint::new(Arc::clone(&addr).to_string())
-                .unwrap()
-                .connect()
-                .await
-                .unwrap();
+            let addr = Arc::clone(&addr);
             let label_keys = Arc::clone(&label_keys);
             let label_values = Arc::clone(&label_values);
-            let channel = channel.clone();
             joins.push(tokio::spawn(async move {
-                let mut client = RemoteClient::new(channel);
+                let mut stream = TcpStream::connect(addr.as_ref()).await.unwrap();
                 for _ in 0..args.round {
-                    client
-                        .write(Request::new(generate_request(
-                            args.batch,
-                            &label_keys,
-                            &label_values,
-                        )))
-                        .await
-                        .unwrap();
+                    let request = generate_request(args.batch, &label_keys, &label_values);
+                    let mut buf = Vec::new();
+                    buf.reserve(prost::Message::encoded_len(&request));
+                    prost::Message::encode(&request, &mut buf).unwrap();
+                    stream.write_u64(buf.len() as u64).await.unwrap();
+                    stream.write_all(&buf).await.unwrap();
                 }
             }));
         }

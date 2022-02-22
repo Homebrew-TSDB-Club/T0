@@ -7,16 +7,14 @@
     clippy::use_debug
 )]
 
+mod tcp;
+
 use clap::Parser;
 use context::Context;
 use mimalloc::MiMalloc;
-use proto::prometheus::remote_server::RemoteServer;
-use proto::query::query_server::QueryServer;
-use query::Query;
 use std::sync::Arc;
 use storage::Storage;
 use tokio::runtime;
-use tonic::transport::Server;
 use tracing::{debug, info};
 
 #[global_allocator]
@@ -45,7 +43,7 @@ fn default_cores() -> usize {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = clap::Parser::parse();
-    let addr = args.addr.parse()?;
+    let addr = args.addr;
 
     tracing_subscriber::fmt::init();
     info!("hello, world");
@@ -55,7 +53,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cores = (0..args.storage_cores).map(|id| id * 2).collect::<Vec<_>>();
     let storage = Arc::new(Storage::new(&cores, Arc::new(Context::new())));
-    let query = Query::new(Arc::clone(&storage));
 
     let runtime = runtime::Builder::new_multi_thread()
         .worker_threads(args.server_cores)
@@ -64,12 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug!("start tokio runtime");
     runtime.block_on(async move {
-        Server::builder()
-            .accept_http1(false)
-            .add_service(RemoteServer::new(storage.to_grpc_server()))
-            .add_service(QueryServer::new(query))
-            .serve(addr)
-            .await
+        let server = Arc::new(tcp::Server::bind(addr, storage.to_grpc_server()).await?);
+        server.serve().await
     })?;
 
     Ok(())
