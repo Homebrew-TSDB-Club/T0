@@ -74,15 +74,14 @@ impl MutableChunk {
     ) -> Result<Option<Row>, WriteError> {
         let mut filtered = None;
         for (id, label) in labels.iter().enumerate() {
-            filtered = self
-                .columns
+            self.columns
                 .lookup(
                     &Matcher {
                         name: self.columns.labels[id].name().parse().unwrap(),
                         op: MatcherOp::LiteralEqual,
                         value: label.map(|label| label.clone()),
                     },
-                    filtered,
+                    &mut filtered,
                 )
                 .map_err(|err| WriteError::InternalError {
                     err: format!("{:?}", err),
@@ -135,7 +134,7 @@ impl MutableChunk {
     ) -> Result<Option<ScanChunk>, ScanError> {
         let mut filtered = Some(Bitmap::from_iter(0..self.stat.record_num));
         for filter in filters {
-            filtered = self.columns.lookup(filter, filtered)?;
+            self.columns.lookup(filter, &mut filtered)?;
         }
         match filtered {
             None => Ok(None),
@@ -336,19 +335,31 @@ impl Columns {
     pub(crate) fn lookup(
         &self,
         matcher: &Matcher,
-        superset: Option<Bitmap>,
-    ) -> Result<Option<Bitmap>, ScanError> {
-        Ok(self
+        superset: &mut Option<Bitmap>,
+    ) -> Result<(), ScanError> {
+        let ids = self
             .labels
             .get(matcher.name.as_str())
             .ok_or_else(|| ScanError::NoSuchLabel {
                 name: matcher.name.clone(),
             })?
-            .lookup(matcher.op, matcher.value.as_ref())
-            .map(|ids| match superset {
-                Some(superset) => superset & ids,
-                None => ids,
-            }))
+            .lookup(matcher.op, matcher.value.as_ref());
+        match ids {
+            None => {
+                if let Some(superset) = superset {
+                    superset.clear();
+                }
+            }
+            Some(ids) => match superset {
+                Some(superset) => {
+                    superset.and_inplace(ids);
+                }
+                None => {
+                    *superset = Some(ids.clone());
+                }
+            },
+        }
+        Ok(())
     }
 }
 

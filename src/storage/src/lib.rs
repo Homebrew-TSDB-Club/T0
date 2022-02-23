@@ -25,8 +25,8 @@ use tracing::{debug, error};
 
 #[derive(Debug)]
 struct WriteRequest {
-    table_name: Arc<str>,
-    labels: Arc<Vec<Label>>,
+    table_name: String,
+    labels: Vec<Label>,
     scalars: Vec<(Instant, Vec<Scalar>)>,
 }
 
@@ -117,8 +117,8 @@ impl Storage {
 
     pub async fn write(
         &self,
-        table_name: Arc<str>,
-        labels: Arc<Vec<Label>>,
+        table_name: String,
+        labels: Vec<Label>,
         scalars: Vec<(Instant, Vec<Scalar>)>,
     ) -> Result<(), WriteError> {
         let shard_id = Self::hash_labels(&labels) as usize % self.cores;
@@ -236,8 +236,7 @@ impl StorageServer {
                 }
             }
 
-            let name = Arc::from(name.unwrap().as_ref());
-            let labels = Arc::new(labels);
+            let name = name.unwrap();
 
             let scalars = timeseries
                 .samples
@@ -252,10 +251,7 @@ impl StorageServer {
                 })
                 .collect();
 
-            let result = self
-                .inner
-                .write(Arc::clone(&name), Arc::clone(&labels), scalars)
-                .await;
+            let result = self.inner.write(name, labels, scalars).await;
             if let Err(error) = result {
                 error!("timeseries write error: {:?}", error);
             }
@@ -296,8 +292,8 @@ mod test {
             value: ScalarValue::Float(1.0),
         }];
         futures_lite::future::block_on(storage.write(
-            Arc::from("test"),
-            Arc::new(labels),
+            String::from("test"),
+            labels,
             vec![(Instant::now(), scalars)],
         ))
         .unwrap();

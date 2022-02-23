@@ -48,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let label_values = Arc::clone(&label_values);
             joins.push(tokio::spawn(async move {
                 let mut stream = TcpStream::connect(addr.as_ref()).await.unwrap();
+                stream.write_u64(0x9d2bd00b191c59e9).await.unwrap();
                 for _ in 0..args.round {
                     let request = generate_request(args.batch, &label_keys, &label_values);
                     let mut buf = Vec::new();

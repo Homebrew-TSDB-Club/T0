@@ -132,7 +132,7 @@ impl LabelColumn {
         &self,
         op: MatcherOp,
         value: Option<&LabelType<String>>,
-    ) -> Option<Bitmap> {
+    ) -> Option<&Bitmap> {
         match &self.data {
             LabelType::String(data) => match op {
                 MatcherOp::LiteralEqual => {
@@ -143,7 +143,7 @@ impl LabelColumn {
                         }
                         None => 0,
                     };
-                    return self.index.get(&id).cloned();
+                    self.index.get(&id)
                 }
                 _ => unimplemented!(),
             },
@@ -157,10 +157,8 @@ impl LabelColumn {
                 LabelValue::String(s) => {
                     let id = data.values.lookup_or_insert(s);
                     data.data.push(id);
-                    self.index
-                        .entry(id)
-                        .or_insert_with(Bitmap::create)
-                        .add(data.data.len() as u32 - 1);
+                    let bitmap = self.index.entry(id).or_insert_with(Bitmap::create);
+                    bitmap.add(data.data.len() as u32 - 1);
                 }
             },
         }

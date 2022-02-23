@@ -1,4 +1,9 @@
+use std::env;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if env::var("PROTO_REBUILD").is_err() {
+        return Ok(());
+    }
     tonic_build::configure()
         .build_client(true)
         .build_server(true)
