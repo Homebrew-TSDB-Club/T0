@@ -11,6 +11,7 @@ In current, it is just a demo.
   - immutable old data & use Apache Arrow / Parquet ecosystem
     - boost analytical query (push-down more piplinable calculator with SIMD)
     - support zero-copy transportation to easily integrate to other analytical project
+  - massive distributed query
 - load-on-demand component & easily scaling on component level
 - optional WAL / distribution backup
 - columnar format & rich-type column
@@ -93,3 +94,12 @@ cargo build --release
     - [x] Apache Arrow Flight over HTTP/2(gRPC)
     - [ ] DPDK / RDMA
   - [x] shared-nothing mutable chunk query
+  - [x] inverted index
+  - [ ] sparse index
+
+## Benchmark
+[Insertion](https://github.com/Homebrew-TSDB-Club/T0/blob/main/tests/prometheus/src/benchmark.rs)
+
+### Conclusion
+Over 30% overhead in croaring bitmap, and still have lots of optimize ways.
+![Flamegraph](https://raw.githubusercontent.com/Homebrew-TSDB-Club/T0/main/static/flamegraph.svg)
