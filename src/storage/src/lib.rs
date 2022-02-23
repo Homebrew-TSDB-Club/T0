@@ -8,7 +8,7 @@ mod util;
 use crate::chunk::ScanChunk;
 use crate::db::Shard;
 use crate::error::{ScanError, WriteError};
-use crate::util::{hash_combine, HashReduce};
+use crate::util::{hash_combine, jump_consistent_hash, HashReduce};
 use arrow2::datatypes::{DataType, Field, Schema};
 use async_trait::async_trait;
 use common::time::Instant;
@@ -121,12 +121,12 @@ impl Storage {
         labels: Vec<Label>,
         scalars: Vec<(Instant, Vec<Scalar>)>,
     ) -> Result<(), WriteError> {
-        let shard_id = Self::hash_labels(&labels) as usize % self.cores;
+        let shard_id = jump_consistent_hash(Self::hash_labels(&labels), self.cores);
 
         let (ret, ret_recv) = oneshot::channel();
         self.runtime
             .send(
-                shard_id,
+                shard_id as usize,
                 Request::Write {
                     inner: Arc::new(WriteRequest {
                         table_name,
