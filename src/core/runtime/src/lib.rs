@@ -49,7 +49,8 @@ impl<T: Send + 'static> Runtime<T> {
 
     pub fn run<F, G>(&mut self, f: F)
     where
-        F: FnOnce(usize, Receiver<T>) -> G + 'static + Send + Clone,
+        F: FnOnce(usize, Receiver<T>) -> G,
+        F: Send + Clone + 'static,
         G: Future<Output = ()>,
     {
         for &id in &self.cores {

@@ -1,0 +1,22 @@
+namespace write;
+
+struct Sample {
+    value: double;
+    timestamp: long;
+}
+
+table Label {
+    name: string (required);
+    value: string (required);
+}
+
+table Timeseries {
+    labels: [Label] (required);
+    samples: [Sample] (required);
+}
+
+table WriteRequest {
+  timeseries: [Timeseries] (required);
+}
+
+root_type WriteRequest;

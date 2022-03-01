@@ -28,29 +28,30 @@ impl Query {
         &self,
         promql: &str,
     ) -> Result<(Schema, Vec<Chunk<Arc<dyn Array>>>), Error> {
-        let expr = parse(promql).map_err(|err| Error::ParseError { err })?;
-        let mut projections = Vec::new();
-        for projection in expr.projection {
-            if let Projection::Specific { name, .. } = projection {
-                projections.push(name)
-            }
-        }
-        let (schema, chunks) = self
-            .storage
-            .scan(
-                expr.resource.resource,
-                Some(projections),
-                expr.filters,
-                expr.range,
-                None,
-            )
-            .await
-            .map_err(|err| Error::StorageError { err })?;
-        let chunks = chunks
-            .into_iter()
-            .map(|chunk| chunk.into_arrow_chunk())
-            .collect();
-        Ok((schema, chunks))
+        todo!()
+        // let expr = parse(promql).map_err(|err| Error::ParseError { err })?;
+        // let mut projections = Vec::new();
+        // for projection in expr.projection {
+        //     if let Projection::Specific { name, .. } = projection {
+        //         projections.push(name)
+        //     }
+        // }
+        // let (schema, chunks) = self
+        //     .storage
+        //     .scan(
+        //         expr.resource.resource,
+        //         Some(projections),
+        //         expr.filters,
+        //         expr.range,
+        //         None,
+        //     )
+        //     .await
+        //     .map_err(|err| Error::StorageError { err })?;
+        // let chunks = chunks
+        //     .into_iter()
+        //     .map(|chunk| chunk.into_arrow_chunk())
+        //     .collect();
+        // Ok((schema, chunks))
     }
 }
 

@@ -1,5 +1,8 @@
 use clap::Parser;
-use proto::prometheus::{Label, Sample, TimeSeries, WriteRequest};
+use flat::write::{
+    Label, LabelArgs, Sample, Timeseries, TimeseriesArgs, WriteRequest, WriteRequestArgs,
+};
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use std::iter::repeat_with;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -50,12 +53,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut stream = TcpStream::connect(addr.as_ref()).await.unwrap();
                 stream.write_u64(0x9d2bd00b191c59e9).await.unwrap();
                 for _ in 0..args.round {
-                    let request = generate_request(args.batch, &label_keys, &label_values);
-                    let mut buf = Vec::new();
-                    buf.reserve(prost::Message::encoded_len(&request));
-                    prost::Message::encode(&request, &mut buf).unwrap();
+                    let mut builder = FlatBufferBuilder::with_capacity(512);
+                    generate_request(&mut builder, args.batch, &label_keys, &label_values);
+                    let buf = builder.finished_data();
                     stream.write_u64(buf.len() as u64).await.unwrap();
-                    stream.write_all(&buf).await.unwrap();
+                    stream.write_all(buf).await.unwrap();
                 }
             }));
         }
@@ -73,38 +75,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn generate_timeseries(keys: &[String], values: &[String]) -> TimeSeries {
-    let mut labels = vec![Label {
-        name: String::from("__name__"),
-        value: String::from("test_benchmark"),
-    }];
+fn generate_timeseries<'a, 'b: 'a>(
+    builder: &'a mut FlatBufferBuilder<'b>,
+    keys: &'a [String],
+    values: &'a [String],
+) -> WIPOffset<Timeseries<'b>> {
+    let args = LabelArgs {
+        name: Some(builder.create_string("__name__")),
+        value: Some(builder.create_string("test_benchmark")),
+    };
+    let mut labels = vec![Label::create(builder, &args)];
+
     for key in keys {
-        labels.push(Label {
-            name: key.clone(),
-            value: values[fastrand::usize(0..7)].clone(),
-        });
+        let args = LabelArgs {
+            name: Some(builder.create_string(key.as_ref())),
+            value: Some(builder.create_string(values[fastrand::usize(0..7)].as_ref())),
+        };
+        labels.push(Label::create(builder, &args));
     }
-    TimeSeries {
-        labels,
-        samples: vec![Sample {
-            value: 1.0,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64,
-        }],
-        exemplars: vec![],
-    }
+
+    let sample = vec![Sample::new(
+        1.0,
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64,
+    )];
+
+    let args = TimeseriesArgs {
+        labels: Some(builder.create_vector(&labels)),
+        samples: Some(builder.create_vector(&sample)),
+    };
+
+    Timeseries::create(builder, &args)
 }
 
-fn generate_request(batch: usize, keys: &[String], values: &[String]) -> WriteRequest {
-    WriteRequest {
-        timeseries: (0..batch)
-            .into_iter()
-            .map(|_| generate_timeseries(keys, values))
-            .collect(),
-        metadata: vec![],
+fn generate_request<'a, 'b: 'a>(
+    builder: &'a mut FlatBufferBuilder<'b>,
+    batch: usize,
+    keys: &'a [String],
+    values: &'a [String],
+) {
+    let mut ts = Vec::new();
+    for _ in 0..batch {
+        ts.push(generate_timeseries(builder, keys, values));
     }
+    let args = WriteRequestArgs {
+        timeseries: Some(builder.create_vector(&ts)),
+    };
+    let request = WriteRequest::create(builder, &args);
+    builder.finish(request, None);
 }
 
 fn generate_strings(len: usize, size: usize) -> Vec<String> {

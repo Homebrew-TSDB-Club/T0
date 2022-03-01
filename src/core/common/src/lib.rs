@@ -63,12 +63,12 @@ impl<S: Clone> Clone for LabelType<S> {
 
 impl<S: Copy> Copy for LabelType<S> {}
 
-pub type LabelValue = LabelType<String>;
+pub type LabelValue<'a> = LabelType<&'a str>;
 
 #[derive(Debug, Clone)]
-pub struct Label {
-    pub name: String,
-    pub value: LabelValue,
+pub struct Label<'a> {
+    pub name: &'a str,
+    pub value: LabelValue<'a>,
 }
 
 #[cfg(test)]

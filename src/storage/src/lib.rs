@@ -10,50 +10,42 @@ use crate::db::Shard;
 use crate::error::{ScanError, WriteError};
 use crate::util::{hash_combine, jump_consistent_hash, HashReduce};
 use arrow2::datatypes::{DataType, Field, Schema};
-use async_trait::async_trait;
 use common::time::Instant;
 use common::{Label, LabelValue, Scalar, ScalarValue};
 use context::Context;
 use futures::channel::oneshot;
-use proto::prometheus::remote_server::Remote;
-use proto::prometheus::{WriteRequest as PromWriteRequest, WriteResponse};
-use proto::{Request as GrpcRequest, Response as GrpcResponse, Status};
 use ql::rosetta::{Matcher, Range};
 use runtime::Runtime;
+use std::mem;
 use std::sync::Arc;
-use tracing::{debug, error};
+use tracing::error;
 
 #[derive(Debug)]
-struct WriteRequest {
-    table_name: String,
-    labels: Vec<Label>,
-    scalars: Vec<(Instant, Vec<Scalar>)>,
-}
-
-#[derive(Debug)]
-struct ScanRequest {
+struct ScanRequest<'a> {
     table_name: String,
     projections: Option<Vec<String>>,
-    filters: Vec<Matcher>,
+    filters: Vec<Matcher<'a>>,
     range: Range,
     limit: Option<usize>,
 }
 
 #[derive(Debug)]
-enum Request {
+enum Request<'a> {
     Write {
-        inner: Arc<WriteRequest>,
+        table_name: &'a str,
+        labels: Vec<Label<'a>>,
+        scalars: Vec<(Instant, Vec<Scalar>)>,
         ret: oneshot::Sender<Result<(), WriteError>>,
     },
     Scan {
-        inner: Arc<ScanRequest>,
+        inner: Arc<ScanRequest<'a>>,
         ret: oneshot::Sender<Result<Vec<ScanChunk>, ScanError>>,
     },
 }
 
 #[derive(Debug)]
 pub struct Storage {
-    runtime: Runtime<Request>,
+    runtime: Runtime<Request<'static>>,
     cores: usize,
     context: Arc<Context>,
 }
@@ -69,13 +61,14 @@ impl Storage {
             let mut db_shard = Shard::new(Arc::clone(&context));
             while let Ok(request) = recv.recv().await {
                 match request {
-                    Request::Write { inner, ret } => {
-                        let request = inner.as_ref();
-                        let result = db_shard.write(
-                            request.table_name.as_ref(),
-                            request.labels.as_ref(),
-                            request.scalars.as_ref(),
-                        );
+                    Request::Write {
+                        table_name,
+                        labels,
+                        scalars,
+                        ret,
+                    } => {
+                        let result =
+                            db_shard.write(table_name.as_ref(), labels.as_ref(), scalars.as_ref());
                         ret.send(result).unwrap();
                     }
                     Request::Scan { inner, ret } => {
@@ -117,22 +110,22 @@ impl Storage {
 
     pub async fn write(
         &self,
-        table_name: String,
-        labels: Vec<Label>,
+        table_name: &str,
+        labels: Vec<Label<'_>>,
         scalars: Vec<(Instant, Vec<Scalar>)>,
     ) -> Result<(), WriteError> {
-        let shard_id = jump_consistent_hash(Self::hash_labels(&labels), self.cores);
+        let table_name = unsafe { mem::transmute::<&str, &'static str>(table_name) };
+        let labels = unsafe { mem::transmute::<Vec<Label<'_>>, Vec<Label<'static>>>(labels) };
 
+        let shard_id = jump_consistent_hash(Self::hash_labels(&labels), self.cores);
         let (ret, ret_recv) = oneshot::channel();
         self.runtime
             .send(
                 shard_id as usize,
                 Request::Write {
-                    inner: Arc::new(WriteRequest {
-                        table_name,
-                        labels,
-                        scalars,
-                    }),
+                    table_name,
+                    labels,
+                    scalars,
                     ret,
                 },
             )
@@ -146,7 +139,7 @@ impl Storage {
         &self,
         table_name: String,
         projections: Option<Vec<String>>,
-        filters: Vec<Matcher>,
+        filters: Vec<Matcher<'static>>,
         range: Range,
         limit: Option<usize>,
     ) -> Result<(Schema, Vec<ScanChunk>), ScanError> {
@@ -220,18 +213,18 @@ pub struct StorageServer {
 }
 
 impl StorageServer {
-    pub async fn grpc_write(&self, request: PromWriteRequest) {
-        for timeseries in request.timeseries {
+    pub async fn grpc_write(&self, request: flat::write::WriteRequest<'_>) {
+        for timeseries in request.timeseries() {
             let mut name = None;
-            let mut labels = Vec::with_capacity(timeseries.labels.len() - 1);
+            let mut labels = Vec::with_capacity(timeseries.labels().len() - 1);
 
-            for label in timeseries.labels {
-                if label.name == "__name__" {
-                    name = Some(label.value);
+            for label in timeseries.labels() {
+                if label.name() == "__name__" {
+                    name = Some(label.value());
                 } else {
                     labels.push(Label {
-                        name: label.name,
-                        value: LabelValue::String(label.value),
+                        name: label.name(),
+                        value: LabelValue::String(label.value()),
                     })
                 }
             }
@@ -239,13 +232,13 @@ impl StorageServer {
             let name = name.unwrap();
 
             let scalars = timeseries
-                .samples
-                .into_iter()
+                .samples()
+                .iter()
                 .map(|sample| {
-                    let timestamp = Instant::from_millis(sample.timestamp);
+                    let timestamp = Instant::from_millis(sample.timestamp());
                     let scalars = vec![Scalar {
                         name: String::from("value"),
-                        value: ScalarValue::Float(sample.value),
+                        value: ScalarValue::Float(sample.value()),
                     }];
                     (timestamp, scalars)
                 })
@@ -256,18 +249,6 @@ impl StorageServer {
                 error!("timeseries write error: {:?}", error);
             }
         }
-    }
-}
-
-#[async_trait]
-impl Remote for StorageServer {
-    async fn write(
-        &self,
-        request: GrpcRequest<PromWriteRequest>,
-    ) -> Result<GrpcResponse<WriteResponse>, Status> {
-        debug!("request start");
-        self.grpc_write(request.into_inner()).await;
-        Ok(GrpcResponse::new(WriteResponse {}))
     }
 }
 
@@ -284,15 +265,15 @@ mod test {
     fn storage_scan() {
         let storage = Storage::new(&[0], Arc::new(Context::new()));
         let labels = vec![Label {
-            name: String::from("label1"),
-            value: LabelValue::String(String::from("value1")),
+            name: "label1",
+            value: LabelValue::String("value1"),
         }];
         let scalars = vec![Scalar {
             name: String::from("scalar1"),
             value: ScalarValue::Float(1.0),
         }];
         futures_lite::future::block_on(storage.write(
-            String::from("test"),
+            "test",
             labels,
             vec![(Instant::now(), scalars)],
         ))

@@ -19,6 +19,8 @@ futures = "0.3.21"
 fxhash = "0.2.1"
 tracing = "0.1.31"
 context = { path = "../context" }
+flat = { path = "../../flat" }
+
 
 [dev-dependencies]
 futures-lite = "1.12.0"

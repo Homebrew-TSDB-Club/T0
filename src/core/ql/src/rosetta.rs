@@ -29,18 +29,18 @@ pub struct Range {
 }
 
 #[derive(Debug)]
-pub struct Expr {
+pub struct Expr<'a> {
     pub resource: Resource,
-    pub filters: Vec<Matcher>,
+    pub filters: Vec<Matcher<'a>>,
     pub range: Range,
     pub projection: Vec<Projection>,
 }
 
 #[derive(Debug)]
-pub struct Matcher {
-    pub name: String,
+pub struct Matcher<'a> {
+    pub name: &'a str,
     pub op: MatcherOp,
-    pub value: Option<LabelType<String>>,
+    pub value: Option<LabelType<&'a str>>,
 }
 
 #[derive(Debug, Copy, Clone)]

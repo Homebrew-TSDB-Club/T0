@@ -42,7 +42,7 @@ impl Shard {
         &self,
         table_name: &str,
         projections: Option<&[String]>,
-        filters: &[Matcher],
+        filters: &[Matcher<'static>],
         range: Range,
         limit: Option<usize>,
     ) -> Result<Vec<ScanChunk>, ScanError> {

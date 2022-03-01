@@ -5,20 +5,22 @@ use common::LabelType;
 use promql::{LabelMatchOp, Node, Vector};
 
 pub fn parse(q: &str) -> Result<Expr, Error> {
+    todo!();
     let ast = promql::parse(q.as_ref(), false).map_err(|err| Error::InternalError {
         err: format!("{:?}", err),
     })?;
     match ast {
         Node::Vector(vector) => translate_vector(vector, vec![]),
         Node::Function { name, args, .. } => match args.into_iter().next().unwrap() {
-            Node::Vector(vector) => translate_vector(vector, vec![name]),
+            Node::Vector(vector) => translate_vector(vector, vec![&name]),
             _ => unimplemented!(),
         },
         _ => unimplemented!(),
     }
 }
 
-fn translate_vector(vector: Vector, functions: Vec<String>) -> Result<Expr, Error> {
+fn translate_vector(vector: Vector, functions: Vec<&str>) -> Result<Expr, Error> {
+    todo!();
     let range = Range {
         start: vector
             .range
@@ -38,9 +40,9 @@ fn translate_vector(vector: Vector, functions: Vec<String>) -> Result<Expr, Erro
                 LabelMatchOp::RNe => MatcherOp::RegexNotMatch,
             };
             filters.push(Matcher {
-                name: label.name,
+                name: &*label.name,
                 op,
-                value: Some(LabelType::String(label.value)),
+                value: Some(LabelType::String(&*label.value)),
             })
         }
     }
@@ -57,7 +59,7 @@ fn translate_vector(vector: Vector, functions: Vec<String>) -> Result<Expr, Erro
             name: String::from("value"),
             pipeline: functions
                 .into_iter()
-                .map(|name| Function { name })
+                .map(|name| Function { name: name.into() })
                 .collect(),
         }],
     })

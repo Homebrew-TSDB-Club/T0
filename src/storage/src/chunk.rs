@@ -70,14 +70,14 @@ impl MutableChunk {
 
     pub(crate) fn get_mut(
         &mut self,
-        labels: &[Option<&LabelValue>],
+        labels: &[Option<LabelValue>],
     ) -> Result<Option<Row>, WriteError> {
         let mut filtered = None;
         for (id, label) in labels.iter().enumerate() {
             self.columns
                 .lookup(
                     &Matcher {
-                        name: self.columns.labels[id].name().parse().unwrap(),
+                        name: self.columns.labels[id].name().as_ref(),
                         op: MatcherOp::LiteralEqual,
                         value: label.map(|label| label.clone()),
                     },
@@ -92,7 +92,7 @@ impl MutableChunk {
             .map(|id| Row::new(self, id)))
     }
 
-    pub(crate) fn push(&mut self, labels: &[Option<&LabelValue>]) -> Row {
+    pub(crate) fn push(&mut self, labels: &[Option<LabelValue>]) -> Row {
         for (offset, column) in self.columns.labels.iter_mut().enumerate() {
             let label = &labels[offset];
             match label {
@@ -107,18 +107,15 @@ impl MutableChunk {
         Row::new(self, id - 1)
     }
 
-    pub(crate) fn align_labels<'a>(
-        &self,
-        labels: &'a [Label],
-    ) -> Vec<Option<&'a LabelType<String>>> {
+    pub(crate) fn align_labels<'a>(&self, labels: &'a [Label]) -> Vec<Option<LabelType<&'a str>>> {
         let mut aligned_labels = vec![None; self.columns.labels.len()];
         for label in labels {
-            match self.columns.labels.get_id(label.name.as_str()) {
+            match self.columns.labels.get_id(label.name) {
                 None => {
                     unimplemented!()
                 }
                 Some(id) => {
-                    aligned_labels[id] = Some(&label.value);
+                    aligned_labels[id] = Some(label.value);
                 }
             };
         }
@@ -128,7 +125,7 @@ impl MutableChunk {
     pub(crate) async fn scan(
         &self,
         projections: Option<&[String]>,
-        filters: &[Matcher],
+        filters: &[Matcher<'_>],
         range: Range,
         _limit: Option<usize>,
     ) -> Result<Option<ScanChunk>, ScanError> {
@@ -339,11 +336,11 @@ impl Columns {
     ) -> Result<(), ScanError> {
         let ids = self
             .labels
-            .get(matcher.name.as_str())
+            .get(matcher.name)
             .ok_or_else(|| ScanError::NoSuchLabel {
-                name: matcher.name.clone(),
+                name: matcher.name.into(),
             })?
-            .lookup(matcher.op, matcher.value.as_ref());
+            .lookup(matcher.op, matcher.value);
         match ids {
             None => {
                 if let Some(superset) = superset {
@@ -452,7 +449,7 @@ mod test {
         futures::executor::block_on(async move {
             let projections = Some(vec![String::from("test2")]);
             let filters = vec![Matcher {
-                name: String::from("test1"),
+                name: "test1",
                 op: MatcherOp::LiteralEqual,
                 value: None,
             }];

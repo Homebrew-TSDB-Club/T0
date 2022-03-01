@@ -59,7 +59,8 @@ impl Server {
             }
             buf.resize(len as usize, 0);
             socket.read_exact(&mut buf).await?;
-            let request = Message::decode(&mut Cursor::new(&buf))?;
+            let request = flat::write::root_as_write_request(&buf)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{:?}", err)))?;
             self.server.grpc_write(request).await;
             buf.clear();
         }

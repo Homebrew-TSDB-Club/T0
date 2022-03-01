@@ -9,7 +9,8 @@ members = [
     "proto",
     "cmd",
     "src/query",
-    "src/context"
+    "src/context",
+    "flat"
 ]
 
 default-members = ["cmd"]

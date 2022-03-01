@@ -128,11 +128,7 @@ impl LabelColumn {
         }
     }
 
-    pub(crate) fn lookup(
-        &self,
-        op: MatcherOp,
-        value: Option<&LabelType<String>>,
-    ) -> Option<&Bitmap> {
+    pub(crate) fn lookup(&self, op: MatcherOp, value: Option<LabelType<&str>>) -> Option<&Bitmap> {
         match &self.data {
             LabelType::String(data) => match op {
                 MatcherOp::LiteralEqual => {
@@ -224,7 +220,7 @@ mod test {
         let mut label = LabelColumn::new(LabelType::String(String::from("test")));
         label.push_zero();
         assert!(label.get(0).is_none());
-        label.push(&LabelValue::String(String::from("test")));
+        label.push(&LabelValue::String("test"));
         assert!(label.get(1).is_some());
     }
 
@@ -233,15 +229,12 @@ mod test {
         let mut label = LabelColumn::new(LabelType::String(String::from("test")));
         label.push_zero();
         assert!(label.get(0).is_none());
-        label.push(&LabelValue::String(String::from("test")));
+        label.push(&LabelValue::String("test"));
         assert!(label.get(1).is_some());
         let id = label.lookup(MatcherOp::LiteralEqual, None);
         assert!(id.is_some());
         assert_eq!(id.map(|id| id.iter().next().unwrap()), Some(0));
-        let id = label.lookup(
-            MatcherOp::LiteralEqual,
-            Some(&LabelType::String(String::from("test"))),
-        );
+        let id = label.lookup(MatcherOp::LiteralEqual, Some(LabelType::String("test")));
         assert!(id.is_some());
         assert_eq!(id.map(|id| id.iter().next().unwrap()), Some(1));
     }

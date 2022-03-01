@@ -45,7 +45,7 @@ impl Table {
     pub(crate) async fn scan(
         &self,
         projections: Option<&[String]>,
-        filters: &[Matcher],
+        filters: &[Matcher<'_>],
         range: Range,
         limit: Option<usize>,
     ) -> Result<Vec<ScanChunk>, ScanError> {
