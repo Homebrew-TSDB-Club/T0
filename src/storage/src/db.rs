@@ -5,7 +5,7 @@ use common::time::Instant;
 use common::{Label, Scalar};
 use context::Context;
 use hashbrown::HashMap;
-use ql::rosetta::{Matcher, Range};
+use ql::rosetta::{MatcherRef, Range};
 use std::sync::Arc;
 
 pub(crate) struct Shard {
@@ -42,7 +42,7 @@ impl Shard {
         &self,
         table_name: &str,
         projections: Option<&[String]>,
-        filters: &[Matcher<'static>],
+        filters: &[MatcherRef<'_>],
         range: Range,
         limit: Option<usize>,
     ) -> Result<Vec<ScanChunk>, ScanError> {

@@ -1,0 +1,10 @@
+namespace query;
+
+enum Language : byte { PromQL = 0 }
+
+table QueryRequest {
+    language:Language;
+    q:string (required);
+}
+
+root_type QueryRequest;

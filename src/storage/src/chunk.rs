@@ -10,7 +10,7 @@ use common::util::IndexMap;
 use common::{Label, LabelType, LabelValue, Scalar, ScalarType};
 use context::Schema;
 use croaring::Bitmap;
-use ql::rosetta::{Matcher, MatcherOp, Range};
+use ql::rosetta::{MatcherRef, MatcherOp, Range};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -70,16 +70,16 @@ impl MutableChunk {
 
     pub(crate) fn get_mut(
         &mut self,
-        labels: &[Option<LabelValue>],
+        labels: &[Option<&LabelValue>],
     ) -> Result<Option<Row>, WriteError> {
         let mut filtered = None;
         for (id, label) in labels.iter().enumerate() {
             self.columns
                 .lookup(
-                    &Matcher {
+                    &MatcherRef {
                         name: self.columns.labels[id].name().as_ref(),
                         op: MatcherOp::LiteralEqual,
-                        value: label.map(|label| label.clone()),
+                        value: label.as_deref(),
                     },
                     &mut filtered,
                 )
@@ -92,7 +92,7 @@ impl MutableChunk {
             .map(|id| Row::new(self, id)))
     }
 
-    pub(crate) fn push(&mut self, labels: &[Option<LabelValue>]) -> Row {
+    pub(crate) fn push(&mut self, labels: &[Option<&LabelValue>]) -> Row {
         for (offset, column) in self.columns.labels.iter_mut().enumerate() {
             let label = &labels[offset];
             match label {
@@ -107,7 +107,10 @@ impl MutableChunk {
         Row::new(self, id - 1)
     }
 
-    pub(crate) fn align_labels<'a>(&self, labels: &'a [Label]) -> Vec<Option<LabelType<&'a str>>> {
+    pub(crate) fn align_labels<'a>(
+        &self,
+        labels: &'a [Label],
+    ) -> Vec<Option<&'a LabelType<&'a str>>> {
         let mut aligned_labels = vec![None; self.columns.labels.len()];
         for label in labels {
             match self.columns.labels.get_id(label.name) {
@@ -115,7 +118,7 @@ impl MutableChunk {
                     unimplemented!()
                 }
                 Some(id) => {
-                    aligned_labels[id] = Some(label.value);
+                    aligned_labels[id] = Some(&label.value);
                 }
             };
         }
@@ -125,7 +128,7 @@ impl MutableChunk {
     pub(crate) async fn scan(
         &self,
         projections: Option<&[String]>,
-        filters: &[Matcher<'_>],
+        filters: &[MatcherRef<'_>],
         range: Range,
         _limit: Option<usize>,
     ) -> Result<Option<ScanChunk>, ScanError> {
@@ -331,7 +334,7 @@ impl Columns {
 
     pub(crate) fn lookup(
         &self,
-        matcher: &Matcher,
+        matcher: &MatcherRef,
         superset: &mut Option<Bitmap>,
     ) -> Result<(), ScanError> {
         let ids = self
@@ -349,7 +352,7 @@ impl Columns {
             }
             Some(ids) => match superset {
                 Some(superset) => {
-                    superset.and_inplace(ids);
+                    *superset = superset.and(ids);
                 }
                 None => {
                     *superset = Some(ids.clone());
@@ -402,7 +405,7 @@ mod test {
     use common::util::IndexMap;
     use common::{LabelType, Scalar, ScalarType, ScalarValue};
     use context::{Schema, DEFAULT};
-    use ql::rosetta::{Matcher, MatcherOp, Range};
+    use ql::rosetta::{MatcherRef, MatcherOp, Range};
     use std::sync::Arc;
 
     #[test]
@@ -448,7 +451,7 @@ mod test {
 
         futures::executor::block_on(async move {
             let projections = Some(vec![String::from("test2")]);
-            let filters = vec![Matcher {
+            let filters = vec![MatcherRef {
                 name: "test1",
                 op: MatcherOp::LiteralEqual,
                 value: None,

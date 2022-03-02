@@ -3,7 +3,7 @@ use crate::error::{ScanError, WriteError};
 use common::time::{Instant, EPOCH};
 use common::{Label, Scalar};
 use context::Schema;
-use ql::rosetta::{Matcher, Range};
+use ql::rosetta::{MatcherRef, Range};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -45,7 +45,7 @@ impl Table {
     pub(crate) async fn scan(
         &self,
         projections: Option<&[String]>,
-        filters: &[Matcher<'_>],
+        filters: &[MatcherRef<'_>],
         range: Range,
         limit: Option<usize>,
     ) -> Result<Vec<ScanChunk>, ScanError> {

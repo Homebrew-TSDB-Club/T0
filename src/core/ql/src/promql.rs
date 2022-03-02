@@ -5,7 +5,6 @@ use common::LabelType;
 use promql::{LabelMatchOp, Node, Vector};
 
 pub fn parse(q: &str) -> Result<Expr, Error> {
-    todo!();
     let ast = promql::parse(q.as_ref(), false).map_err(|err| Error::InternalError {
         err: format!("{:?}", err),
     })?;
@@ -20,7 +19,6 @@ pub fn parse(q: &str) -> Result<Expr, Error> {
 }
 
 fn translate_vector(vector: Vector, functions: Vec<&str>) -> Result<Expr, Error> {
-    todo!();
     let range = Range {
         start: vector
             .range
@@ -40,9 +38,9 @@ fn translate_vector(vector: Vector, functions: Vec<&str>) -> Result<Expr, Error>
                 LabelMatchOp::RNe => MatcherOp::RegexNotMatch,
             };
             filters.push(Matcher {
-                name: &*label.name,
+                name: label.name,
                 op,
-                value: Some(LabelType::String(&*label.value)),
+                value: Some(LabelType::String(label.value)),
             })
         }
     }

@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 storage = { path = "../storage" }
-proto = { path = "../../proto" }
 futures = "0.3.21"
 async-trait = "0.1.52"
 ql = { path = "../core/ql" }
@@ -14,6 +13,7 @@ tracing = "0.1.31"
 context = { path = "../context" }
 snafu = "0.7.0"
 common = { path = "../core/common" }
+flat = {path = "../../flat"}
 
 [dev-dependencies]
 futures-lite = "1.12.0"

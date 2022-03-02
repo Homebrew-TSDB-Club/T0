@@ -12,8 +12,9 @@ mod tcp;
 use clap::Parser;
 use context::Context;
 use mimalloc::MiMalloc;
+use query::QueryServer;
 use std::sync::Arc;
-use storage::Storage;
+use storage::StorageServer;
 use tokio::runtime;
 use tracing::{debug, info};
 
@@ -52,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Storage component uses {} cores", args.storage_cores);
 
     let cores = (0..args.storage_cores).map(|id| id * 2).collect::<Vec<_>>();
-    let storage = Arc::new(Storage::new(&cores, Arc::new(Context::new())));
+    let storage = Arc::new(StorageServer::new(&cores, Arc::new(Context::new())));
 
     let runtime = runtime::Builder::new_multi_thread()
         .worker_threads(args.server_cores)
@@ -61,7 +62,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug!("start tokio runtime");
     runtime.block_on(async move {
-        let server = Arc::new(tcp::Server::bind(addr, storage.to_grpc_server()).await?);
+        let server = Arc::new(
+            tcp::Server::bind(
+                addr,
+                Arc::clone(&storage),
+                Arc::new(QueryServer::new(Arc::clone(&storage))),
+            )
+            .await?,
+        );
         server.serve().await
     })?;
 

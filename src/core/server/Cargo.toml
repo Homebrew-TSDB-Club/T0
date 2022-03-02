@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 hyper = { version = "0.14.17", features = ["http2", "client", "server", "stream"] }
-proto = { path = "../../../proto" }
 runtime = { path = "../runtime" }
 snafu = "0.7.0"
 hashbrown = "0.12.0"

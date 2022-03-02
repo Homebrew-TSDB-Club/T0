@@ -128,7 +128,7 @@ impl LabelColumn {
         }
     }
 
-    pub(crate) fn lookup(&self, op: MatcherOp, value: Option<LabelType<&str>>) -> Option<&Bitmap> {
+    pub(crate) fn lookup(&self, op: MatcherOp, value: Option<&LabelType<&str>>) -> Option<&Bitmap> {
         match &self.data {
             LabelType::String(data) => match op {
                 MatcherOp::LiteralEqual => {
@@ -234,7 +234,7 @@ mod test {
         let id = label.lookup(MatcherOp::LiteralEqual, None);
         assert!(id.is_some());
         assert_eq!(id.map(|id| id.iter().next().unwrap()), Some(0));
-        let id = label.lookup(MatcherOp::LiteralEqual, Some(LabelType::String("test")));
+        let id = label.lookup(MatcherOp::LiteralEqual, Some(&LabelType::String("test")));
         assert!(id.is_some());
         assert_eq!(id.map(|id| id.iter().next().unwrap()), Some(1));
     }

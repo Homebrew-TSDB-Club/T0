@@ -61,21 +61,10 @@ impl<S: Clone> Clone for LabelType<S> {
     }
 }
 
-impl<S: Copy> Copy for LabelType<S> {}
-
 pub type LabelValue<'a> = LabelType<&'a str>;
 
 #[derive(Debug, Clone)]
 pub struct Label<'a> {
     pub name: &'a str,
     pub value: LabelValue<'a>,
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn test_new_chunk() {
-        let s = Some(String::from("test"));
-        let s: Option<&str> = s.as_ref().map(|s| s.as_ref());
-    }
 }

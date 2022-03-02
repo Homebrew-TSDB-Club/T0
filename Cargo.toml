@@ -6,7 +6,6 @@ members = [
     "src/core/server",
     "src/storage",
     "tests/prometheus",
-    "proto",
     "cmd",
     "src/query",
     "src/context",

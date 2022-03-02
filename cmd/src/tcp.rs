@@ -1,11 +1,11 @@
-use prost::Message;
+use query::QueryServer;
 use std::io;
-use std::io::{Cursor, ErrorKind};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use storage::StorageServer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 const MAGIC_CODE: u64 = 0x9d2bd00b191c59e9;
 
@@ -14,14 +14,20 @@ const MAX_MESSAGE_SIZE: u64 = 1 << 16;
 #[derive(Debug)]
 pub struct Server {
     listener: TcpListener,
-    server: StorageServer,
+    storage: Arc<StorageServer>,
+    query: Arc<QueryServer>,
 }
 
 impl Server {
-    pub async fn bind<A: ToSocketAddrs + Send>(addr: A, server: StorageServer) -> io::Result<Self> {
+    pub async fn bind<A: ToSocketAddrs + Send>(
+        addr: A,
+        storage: Arc<StorageServer>,
+        query: Arc<QueryServer>,
+    ) -> io::Result<Self> {
         Ok(Self {
             listener: TcpListener::bind(addr).await?,
-            server,
+            storage,
+            query,
         })
     }
 
@@ -52,6 +58,7 @@ impl Server {
         }
         let mut buf = Vec::with_capacity(MAX_MESSAGE_SIZE as usize);
         loop {
+            let op = socket.read_u16().await?;
             let len = socket.read_u64().await?;
             if len > MAX_MESSAGE_SIZE {
                 warn!("receive message larger than 64KB");
@@ -59,9 +66,26 @@ impl Server {
             }
             buf.resize(len as usize, 0);
             socket.read_exact(&mut buf).await?;
-            let request = flat::write::root_as_write_request(&buf)
-                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{:?}", err)))?;
-            self.server.grpc_write(request).await;
+            match op {
+                0 => {
+                    let request = flat::write::root_as_write_request(&buf).map_err(|err| {
+                        io::Error::new(io::ErrorKind::InvalidInput, format!("{:?}", err))
+                    })?;
+                    self.storage.write(request).await;
+                }
+                1 => {
+                    let request = flat::query::root_as_query_request(&buf).map_err(|err| {
+                        io::Error::new(io::ErrorKind::InvalidInput, format!("{:?}", err))
+                    })?;
+                    let result = self.query.query(request).await.unwrap();
+                    socket.write_u64(result.len() as u64).await?;
+                    socket.write_all(&result).await?;
+                }
+                _ => {
+                    error!("unexpected operation code: {:?}", op);
+                    return Ok(());
+                }
+            }
             buf.clear();
         }
     }

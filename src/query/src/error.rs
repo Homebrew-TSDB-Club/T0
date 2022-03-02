@@ -1,3 +1,4 @@
+use arrow2::error::ArrowError;
 use ql::error::Error as ParseError;
 use snafu::Snafu;
 use storage::error::ScanError;
@@ -8,4 +9,6 @@ pub enum Error {
     StorageError { err: ScanError },
     #[snafu(display("parse error: {:?}", err))]
     ParseError { err: ParseError },
+    #[snafu(display("internal arrow error: {:?}", err))]
+    InternalError { err: ArrowError },
 }

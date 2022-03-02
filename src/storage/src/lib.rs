@@ -11,22 +11,23 @@ use crate::error::{ScanError, WriteError};
 use crate::util::{hash_combine, jump_consistent_hash, HashReduce};
 use arrow2::datatypes::{DataType, Field, Schema};
 use common::time::Instant;
-use common::{Label, LabelValue, Scalar, ScalarValue};
+use common::{Label, LabelType, LabelValue, Scalar, ScalarValue};
 use context::Context;
 use futures::channel::oneshot;
-use ql::rosetta::{Matcher, Range};
+use ql::rosetta::{Matcher, MatcherRef, Range};
 use runtime::Runtime;
 use std::mem;
 use std::sync::Arc;
 use tracing::error;
 
 #[derive(Debug)]
-struct ScanRequest<'a> {
+struct ScanRequest {
     table_name: String,
     projections: Option<Vec<String>>,
-    filters: Vec<Matcher<'a>>,
+    filters: Vec<Matcher>,
     range: Range,
     limit: Option<usize>,
+    ret: async_channel::Sender<Result<Vec<ScanChunk>, ScanError>>,
 }
 
 #[derive(Debug)]
@@ -38,19 +39,18 @@ enum Request<'a> {
         ret: oneshot::Sender<Result<(), WriteError>>,
     },
     Scan {
-        inner: Arc<ScanRequest<'a>>,
-        ret: oneshot::Sender<Result<Vec<ScanChunk>, ScanError>>,
+        inner: Arc<ScanRequest>,
     },
 }
 
 #[derive(Debug)]
-pub struct Storage {
+pub struct StorageServer {
     runtime: Runtime<Request<'static>>,
     cores: usize,
     context: Arc<Context>,
 }
 
-impl Storage {
+impl StorageServer {
     pub fn new(cores: &[usize], context: Arc<Context>) -> Self {
         let mut storage = Self {
             runtime: Runtime::new(cores).unwrap(),
@@ -71,18 +71,37 @@ impl Storage {
                             db_shard.write(table_name.as_ref(), labels.as_ref(), scalars.as_ref());
                         ret.send(result).unwrap();
                     }
-                    Request::Scan { inner, ret } => {
-                        let request = inner.as_ref();
+                    Request::Scan { inner } => {
+                        let mut filter_refs = Vec::with_capacity(inner.filters.len());
+                        let mut filter_values = Vec::with_capacity(inner.filters.len());
+                        for filter in &inner.filters {
+                            let value = match &filter.value {
+                                None => None,
+                                Some(value) => match value {
+                                    LabelType::String(s) => Some(LabelType::String(s.as_ref())),
+                                },
+                            };
+                            filter_values.push(value);
+                        }
+
+                        for (id, value) in filter_values.iter().enumerate() {
+                            let filter = &inner.filters[id];
+                            filter_refs.push(MatcherRef {
+                                name: &filter.name,
+                                op: filter.op,
+                                value: value.as_ref(),
+                            });
+                        }
                         let result = db_shard
                             .scan(
-                                &request.table_name,
-                                request.projections.as_deref(),
-                                &request.filters,
-                                request.range,
-                                request.limit,
+                                &inner.table_name,
+                                inner.projections.as_deref(),
+                                &filter_refs,
+                                inner.range,
+                                inner.limit,
                             )
                             .await;
-                        if let Err(error) = ret.send(result) {
+                        if let Err(error) = inner.ret.send(result).await {
                             error!("storage send response error: {:?}", error)
                         }
                     }
@@ -108,7 +127,7 @@ impl Storage {
         hr.finish()
     }
 
-    pub async fn write(
+    pub async fn inner_write(
         &self,
         table_name: &str,
         labels: Vec<Label<'_>>,
@@ -139,7 +158,7 @@ impl Storage {
         &self,
         table_name: String,
         projections: Option<Vec<String>>,
-        filters: Vec<Matcher<'static>>,
+        filters: Vec<Matcher>,
         range: Range,
         limit: Option<usize>,
     ) -> Result<(Schema, Vec<ScanChunk>), ScanError> {
@@ -169,51 +188,37 @@ impl Storage {
             }
         }
 
-        let mut tasks = Vec::with_capacity(self.cores);
+        let (ret, ret_recv) = async_channel::bounded(self.cores);
         let request = Arc::new(ScanRequest {
             table_name,
             projections,
             filters,
             range,
             limit,
+            ret,
         });
         for shard_id in 0..self.cores {
-            let (ret, ret_recv) = oneshot::channel();
             self.runtime
                 .send(
                     shard_id,
                     Request::Scan {
                         inner: Arc::clone(&request),
-                        ret,
                     },
                 )
                 .await
                 .unwrap();
-            tasks.push(ret_recv);
         }
 
         let mut chunks = Vec::new();
-        for task in tasks {
-            chunks.append(&mut task.await.unwrap()?);
+        for _ in 0..self.cores {
+            chunks.append(&mut ret_recv.recv().await.unwrap()?);
         }
+        ret_recv.close();
 
         Ok((Schema::from(arrow_fields), chunks))
     }
 
-    pub fn to_grpc_server(self: Arc<Self>) -> StorageServer {
-        StorageServer {
-            inner: Arc::clone(&self),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct StorageServer {
-    inner: Arc<Storage>,
-}
-
-impl StorageServer {
-    pub async fn grpc_write(&self, request: flat::write::WriteRequest<'_>) {
+    pub async fn write(&self, request: flat::write::WriteRequest<'_>) {
         for timeseries in request.timeseries() {
             let mut name = None;
             let mut labels = Vec::with_capacity(timeseries.labels().len() - 1);
@@ -244,7 +249,7 @@ impl StorageServer {
                 })
                 .collect();
 
-            let result = self.inner.write(name, labels, scalars).await;
+            let result = self.inner_write(name, labels, scalars).await;
             if let Err(error) = result {
                 error!("timeseries write error: {:?}", error);
             }
@@ -254,7 +259,7 @@ impl StorageServer {
 
 #[cfg(test)]
 mod test {
-    use crate::Storage;
+    use crate::StorageServer;
     use common::time::Instant;
     use common::{Label, LabelValue, Scalar, ScalarValue};
     use context::Context;
@@ -263,7 +268,7 @@ mod test {
 
     #[test]
     fn storage_scan() {
-        let storage = Storage::new(&[0], Arc::new(Context::new()));
+        let storage = StorageServer::new(&[0], Arc::new(Context::new()));
         let labels = vec![Label {
             name: "label1",
             value: LabelValue::String("value1"),
@@ -272,7 +277,7 @@ mod test {
             name: String::from("scalar1"),
             value: ScalarValue::Float(1.0),
         }];
-        futures_lite::future::block_on(storage.write(
+        futures_lite::future::block_on(storage.inner_write(
             "test",
             labels,
             vec![(Instant::now(), scalars)],

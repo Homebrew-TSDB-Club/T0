@@ -1,5 +1,5 @@
 use common::time::Instant;
-use common::LabelType;
+use common::{LabelType, LabelValue};
 
 #[derive(Debug)]
 pub struct Resource {
@@ -29,18 +29,25 @@ pub struct Range {
 }
 
 #[derive(Debug)]
-pub struct Expr<'a> {
+pub struct Expr {
     pub resource: Resource,
-    pub filters: Vec<Matcher<'a>>,
+    pub filters: Vec<Matcher>,
     pub range: Range,
     pub projection: Vec<Projection>,
 }
 
 #[derive(Debug)]
-pub struct Matcher<'a> {
+pub struct Matcher {
+    pub name: String,
+    pub op: MatcherOp,
+    pub value: Option<LabelType<String>>,
+}
+
+#[derive(Debug)]
+pub struct MatcherRef<'a> {
     pub name: &'a str,
     pub op: MatcherOp,
-    pub value: Option<LabelType<&'a str>>,
+    pub value: Option<&'a LabelValue<'a>>,
 }
 
 #[derive(Debug, Copy, Clone)]

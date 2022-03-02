@@ -5,67 +5,58 @@ use arrow2::array::Array;
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::Schema;
 use arrow2::io::ipc::write::{FileWriter, WriteOptions};
-use async_trait::async_trait;
-use proto::query::query_server::Query as QueryProto;
-use proto::query::{PromQlQuery, PromQlResponse};
-use proto::{Request, Response, Status};
+use flat::query::{Language, QueryRequest};
 use ql::promql::parse;
 use ql::rosetta::Projection;
 use std::sync::Arc;
-use storage::Storage;
+use storage::StorageServer;
 
 #[derive(Debug)]
-pub struct Query {
-    storage: Arc<Storage>,
+pub struct QueryServer {
+    storage: Arc<StorageServer>,
 }
 
-impl Query {
-    pub fn new(storage: Arc<Storage>) -> Self {
+impl QueryServer {
+    pub fn new(storage: Arc<StorageServer>) -> Self {
         Self { storage }
     }
 
-    async fn prom_query(
-        &self,
-        promql: &str,
-    ) -> Result<(Schema, Vec<Chunk<Arc<dyn Array>>>), Error> {
-        todo!()
-        // let expr = parse(promql).map_err(|err| Error::ParseError { err })?;
-        // let mut projections = Vec::new();
-        // for projection in expr.projection {
-        //     if let Projection::Specific { name, .. } = projection {
-        //         projections.push(name)
-        //     }
-        // }
-        // let (schema, chunks) = self
-        //     .storage
-        //     .scan(
-        //         expr.resource.resource,
-        //         Some(projections),
-        //         expr.filters,
-        //         expr.range,
-        //         None,
-        //     )
-        //     .await
-        //     .map_err(|err| Error::StorageError { err })?;
-        // let chunks = chunks
-        //     .into_iter()
-        //     .map(|chunk| chunk.into_arrow_chunk())
-        //     .collect();
-        // Ok((schema, chunks))
-    }
-}
-
-#[async_trait]
-impl QueryProto for Query {
-    async fn prom_ql(
-        &self,
-        request: Request<PromQlQuery>,
-    ) -> Result<Response<PromQlResponse>, Status> {
-        let promql = request.into_inner();
+    async fn promql(&self, q: &str) -> Result<(Schema, Vec<Chunk<Arc<dyn Array>>>), Error> {
+        let expr = parse(q).map_err(|err| Error::ParseError { err })?;
+        let mut projections = Vec::new();
+        for projection in expr.projection {
+            if let Projection::Specific { name, .. } = projection {
+                projections.push(name)
+            }
+        }
         let (schema, chunks) = self
-            .prom_query(&promql.query)
+            .storage
+            .scan(
+                expr.resource.resource,
+                Some(projections),
+                expr.filters,
+                expr.range,
+                None,
+            )
             .await
-            .map_err(|err| Status::internal(format!("{:?}", err)))?;
+            .map_err(|err| Error::StorageError { err })?;
+        let chunks = chunks
+            .into_iter()
+            .map(|chunk| chunk.into_arrow_chunk())
+            .collect();
+        Ok((schema, chunks))
+    }
+
+    pub async fn query(&self, request: QueryRequest<'_>) -> Result<Vec<u8>, Error> {
+        let (schema, chunks) = match request.language() {
+            Language::PromQL => {
+                let q = request.q();
+                self.promql(q).await
+            }
+            _ => {
+                unreachable!()
+            }
+        }?;
 
         let mut buffer = Vec::<u8>::new();
         let mut writer = FileWriter::try_new(
@@ -74,28 +65,28 @@ impl QueryProto for Query {
             None,
             WriteOptions { compression: None },
         )
-        .map_err(|err| Status::internal(format!("{:?}", err)))?;
+        .map_err(|err| Error::InternalError { err })?;
         for chunk in chunks {
             writer.write(&chunk, None).unwrap();
         }
-        Ok(Response::new(PromQlResponse { arrows: buffer }))
+        Ok(buffer)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::Query;
+    use crate::QueryServer;
     use arrow2::io::ipc::write::{FileWriter, WriteOptions};
     use common::time::Instant;
     use common::{Label, LabelValue, Scalar, ScalarValue};
     use context::Context;
     use std::sync::Arc;
-    use storage::Storage;
+    use storage::StorageServer;
 
     #[test]
     fn test_scan() {
-        let storage = Arc::new(Storage::new(&[0], Arc::new(Context::new())));
-        futures_lite::future::block_on(storage.write(
+        let storage = Arc::new(StorageServer::new(&[0], Arc::new(Context::new())));
+        futures_lite::future::block_on(storage.inner_write(
             String::from("test"),
             Instant::now(),
             vec![Label {
@@ -122,8 +113,7 @@ mod test {
         ))
         .unwrap();
         let query = Query::new(Arc::clone(&storage));
-        let (schema, chunks) =
-            futures_lite::future::block_on(query.prom_query("test{}[5m]")).unwrap();
+        let (schema, chunks) = futures_lite::future::block_on(query.promql("test{}[5m]")).unwrap();
         println!("{:?}, {:?}", schema, chunks);
         let mut buffer = Vec::<u8>::new();
         let mut writer = FileWriter::try_new(
