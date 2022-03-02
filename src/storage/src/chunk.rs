@@ -10,7 +10,7 @@ use common::util::IndexMap;
 use common::{Label, LabelType, LabelValue, Scalar, ScalarType};
 use context::Schema;
 use croaring::Bitmap;
-use ql::rosetta::{MatcherRef, MatcherOp, Range};
+use ql::rosetta::{MatcherOp, MatcherRef, Range};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -86,6 +86,11 @@ impl MutableChunk {
                 .map_err(|err| WriteError::InternalError {
                     err: format!("{:?}", err),
                 })?;
+            if let Some(filtered) = &filtered {
+                if filtered.is_empty() {
+                    return Ok(None);
+                }
+            }
         }
         Ok(filtered
             .and_then(|ids| ids.iter().next())
@@ -405,7 +410,7 @@ mod test {
     use common::util::IndexMap;
     use common::{LabelType, Scalar, ScalarType, ScalarValue};
     use context::{Schema, DEFAULT};
-    use ql::rosetta::{MatcherRef, MatcherOp, Range};
+    use ql::rosetta::{MatcherOp, MatcherRef, Range};
     use std::sync::Arc;
 
     #[test]
