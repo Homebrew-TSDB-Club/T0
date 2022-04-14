@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arrow2 = "0.9.1"
+arrow2 = "0.10.1"
 common = { path = "../core/common" }
-dashmap = "5.1.0"
+dashmap = "5.2.0"
 hashbrown = "0.12.0"

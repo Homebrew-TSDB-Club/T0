@@ -156,9 +156,9 @@ impl StorageServer {
     #[tracing::instrument]
     pub async fn scan(
         &self,
-        table_name: String,
-        projections: Option<Vec<String>>,
-        filters: Vec<Matcher>,
+        table_name: &str,
+        projections: Option<Vec<&str>>,
+        filters: &[Matcher],
         range: Range,
         limit: Option<usize>,
     ) -> Result<(Schema, Vec<ScanChunk>), ScanError> {
@@ -166,20 +166,20 @@ impl StorageServer {
             .context
             .get_schema(table_name.as_ref())
             .ok_or_else(|| ScanError::NoSuchTable {
-                name: table_name.clone(),
+                name: table_name.into(),
             })?;
         let mut arrow_fields =
             Vec::with_capacity(schema.label_arrows.len() + schema.scalar_arrows.len() + 1);
-        arrow_fields.push(Field::new("metadata", DataType::Utf8, false));
+        arrow_fields.push(Field::new("start_at", DataType::Int64, false));
         arrow_fields.extend_from_slice(&schema.label_arrows);
-        match &projections {
+        match projections {
             None => arrow_fields.extend_from_slice(&schema.scalar_arrows),
-            Some(projections) => {
+            Some(ref projections) => {
                 for projection in projections {
                     arrow_fields.push(
-                        schema.scalar_arrows[schema.scalars.get_id(projection).ok_or_else(
+                        schema.scalar_arrows[schema.scalars.get_id(*projection).ok_or_else(
                             || ScanError::NoSuchScalar {
-                                name: projection.to_owned(),
+                                name: projection.to_string(),
                             },
                         )?]
                         .clone(),
@@ -190,9 +190,9 @@ impl StorageServer {
 
         let (ret, ret_recv) = async_channel::bounded(self.cores);
         let request = Arc::new(ScanRequest {
-            table_name,
-            projections,
-            filters,
+            table_name: table_name.into(),
+            projections: projections.map(|ps| ps.iter().map(|p| p.to_string()).collect()),
+            filters: filters.to_vec(),
             range,
             limit,
             ret,
@@ -215,7 +215,12 @@ impl StorageServer {
         }
         ret_recv.close();
 
-        Ok((Schema::from(arrow_fields), chunks))
+        let mut arrow_schema = Schema::from(arrow_fields);
+        arrow_schema.metadata.insert(
+            String::from("time_interval"),
+            schema.meta.time_interval.as_millis().to_string(),
+        );
+        Ok((arrow_schema, chunks))
     }
 
     pub async fn write(&self, request: flat::write::WriteRequest<'_>) {
@@ -285,9 +290,9 @@ mod test {
         .unwrap();
 
         let result = futures_lite::future::block_on(storage.scan(
-            String::from("test"),
+            "test",
             None,
-            vec![],
+            &[],
             Range {
                 start: None,
                 end: None,

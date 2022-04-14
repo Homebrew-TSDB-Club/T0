@@ -11,4 +11,6 @@ pub enum Error {
     ParseError { err: ParseError },
     #[snafu(display("internal arrow error: {:?}", err))]
     InternalError { err: ArrowError },
+    #[snafu(display("no such field: {:?}", name))]
+    NoSuchField { name: String },
 }

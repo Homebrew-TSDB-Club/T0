@@ -9,17 +9,32 @@ pub struct Resource {
 }
 
 #[derive(Debug, Clone)]
+pub enum AggregateAction {
+    Without,
+    With,
+}
+
+#[derive(Debug, Clone)]
+pub struct Aggregation {
+    pub action: AggregateAction,
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
 }
 
 #[derive(Debug)]
-pub enum Projection {
-    Specific {
-        name: String,
-        pipeline: Vec<Function>,
-    },
-    Rest,
+pub struct Pipeline {
+    pub functions: Vec<Function>,
+    pub breaker: Option<Aggregation>,
+}
+
+#[derive(Debug)]
+pub struct Projection {
+    pub name: String,
+    pub pipeline: Pipeline,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -34,9 +49,10 @@ pub struct Expr {
     pub filters: Vec<Matcher>,
     pub range: Range,
     pub projection: Vec<Projection>,
+    pub aggregation: Option<Aggregation>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Matcher {
     pub name: String,
     pub op: MatcherOp,

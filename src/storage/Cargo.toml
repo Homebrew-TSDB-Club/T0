@@ -8,7 +8,7 @@ ahash = "0.7.6"
 hashbrown = "0.12.0"
 common = { path = "../core/common" }
 croaring = "0.5.1"
-arrow2 = "0.9.1"
+arrow2 = "0.10.1"
 ql = { path = "../core/ql" }
 snafu = "0.7.0"
 async-trait = "0.1.52"
@@ -16,7 +16,7 @@ chrono = "0.4.19"
 runtime = { path = "../core/runtime" }
 futures = "0.3.21"
 fxhash = "0.2.1"
-tracing = "0.1.31"
+tracing = "0.1.32"
 context = { path = "../context" }
 flat = { path = "../../flat" }
 async-channel = "1.6.1"

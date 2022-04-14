@@ -81,6 +81,11 @@ where
     pub fn is_empty(&self) -> bool {
         self.value.is_empty()
     }
+
+    #[inline]
+    pub fn first(&self) -> Option<&V> {
+        self.value.first()
+    }
 }
 
 impl<K, V> Index<usize> for IndexMap<K, V> {

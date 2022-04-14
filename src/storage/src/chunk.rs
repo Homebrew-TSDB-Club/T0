@@ -34,9 +34,12 @@ impl ScanChunk {
     pub fn into_arrow_chunk(self) -> Chunk<Arc<dyn Array>> {
         let mut arrays =
             Vec::<Arc<dyn Array>>::with_capacity(self.labels.len() + self.scalars.len() + 1);
-        arrays.push(Arc::new(PrimitiveArray::<i64>::from([
-            Some(self.start_at.as_millis()),
-            Some(self.time_interval.as_millis()),
+        let len = self.labels.first().map(|c| c.len()).unwrap_or(0);
+        arrays.push(Arc::new(PrimitiveArray::<i64>::from(vec![
+            Some(
+                self.start_at.as_millis()
+            );
+            len
         ])));
         for label in self.labels {
             arrays.push(label);

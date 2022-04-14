@@ -8,8 +8,8 @@ storage = { path = "../storage" }
 futures = "0.3.21"
 async-trait = "0.1.52"
 ql = { path = "../core/ql" }
-arrow2 = { version = "0.9.1", features = ["io_ipc"] }
-tracing = "0.1.31"
+arrow2 = { version = "0.10.1", features = ["io_ipc"] }
+tracing = "0.1.32"
 context = { path = "../context" }
 snafu = "0.7.0"
 common = { path = "../core/common" }
