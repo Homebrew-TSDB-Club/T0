@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "cmd",
+    "src/core/common",
+    "src/core/query",
+    "src/storage"
+]
+
+default-members = ["cmd"]
+
+[profile.release]
+codegen-units = 1
+debug = true
+lto = "thin"
+
+[profile.bench]
+inherits = "release"
